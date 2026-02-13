@@ -54,6 +54,13 @@ RUN mkdir -p /workspace /reads \
 ENV HOME=/home/agent \
     PATH=/home/agent/.local/bin:/home/agent/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# ---- Zig 0.14.1 (installed to /usr/local, outside the home volume) ----
+RUN ZIG_ARCH=$(uname -m) \
+ && curl -fsSL -o /tmp/zig.tar.xz "https://ziglang.org/download/0.14.1/zig-${ZIG_ARCH}-linux-0.14.1.tar.xz" \
+ && tar -xJf /tmp/zig.tar.xz -C /usr/local \
+ && ln -s /usr/local/zig-${ZIG_ARCH}-linux-0.14.1/zig /usr/local/bin/zig \
+ && rm /tmp/zig.tar.xz
+
 USER ${USERNAME}
 WORKDIR /workspace
 

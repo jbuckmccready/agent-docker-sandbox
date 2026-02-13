@@ -76,3 +76,15 @@ docker compose exec proxy squid -k reconfigure
 ```
 
 The proxy runs as a Squid sidecar on an internal Docker network — the sandbox has no direct route to the internet. Direct connections (including `curl` without the proxy) will fail. Only requests to domains listed in the allowlist are permitted.
+
+### Known limitations
+
+**Zig package manager does not work through the proxy.** Zig's built-in HTTP client does not properly handle HTTPS proxy tunneling when fetching dependencies (e.g. `git+https://` URLs in `build.zig.zon`). Fetches will fail with `EndOfStream` errors.
+
+Workarounds:
+
+- **Pre-fetch on the host:** run `zig fetch` or `zig build --fetch` on the host machine before starting the container.
+- **Disable the proxy:** if the proxy isn't needed, start without it:
+  ```bash
+  docker compose -f docker-compose.yml run --rm --build --name agent-sandbox sandbox
+  ```
