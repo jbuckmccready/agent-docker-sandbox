@@ -8,6 +8,14 @@ See `Dockerfile` for base image and installed tools. `docker-compose.yml` and `d
 
 ## Usage
 
+`./workspace` is read/write mounted into the container as `/workspace` - this is where you probably want everything the agent will work with.
+
+`./pi_config` is read/write mounted into the container as `/home/agent/.pi` for pi agent config. Write is required for sessions, extension generated files, `auth.json` and `settings.json`.
+
+`/home/agent` is persisted via a named Docker volume, so caches, installed tools, etc. will persist across container restarts. Note that `docker compose down -v` will delete this volume, but the bind mounts (`./workspace` and `./pi_config`) are unaffected.
+
+Agent runs as a non-root user (`agent`) with passwordless sudo, so it can install packages, etc. All three mounted paths (`/workspace`, `/home/agent/.pi`, and `/home/agent`) persist across container restarts.
+
 Build and start an interactive shell:
 
 ```bash
