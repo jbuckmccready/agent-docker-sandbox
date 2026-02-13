@@ -1,0 +1,40 @@
+# Per-machine overrides — not committed (add to .gitignore if needed).
+# Compose merges this automatically with docker-compose.yml.
+
+services:
+  sandbox:
+    # Sandbox can only reach the proxy, not the internet directly
+    depends_on:
+      - proxy
+    networks:
+      - sandboxed
+    environment:
+      - http_proxy=http://proxy:3128
+      - https_proxy=http://proxy:3128
+      - HTTP_PROXY=http://proxy:3128
+      - HTTPS_PROXY=http://proxy:3128
+      - no_proxy=localhost,127.0.0.1
+      - NO_PROXY=localhost,127.0.0.1
+
+    # ---- Read-only bind mounts ----
+    # Give the agent read access to host paths without letting it modify them.
+    # volumes:
+    #   - ~/.gitconfig:/home/agent/.gitconfig:ro
+    #   - ~/projects/reference-repo:/reads/reference-repo:ro
+
+  proxy:
+    image: ubuntu/squid
+    networks:
+      - sandboxed
+      - internet
+    volumes:
+      - ./proxy/squid.conf:/etc/squid/squid.conf:ro
+      - ./proxy/allowlist.txt:/etc/squid/allowlist.txt:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+
+networks:
+  sandboxed:
+    internal: true
+  internet:
+    driver: bridge

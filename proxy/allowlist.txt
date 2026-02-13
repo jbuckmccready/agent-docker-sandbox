@@ -1,0 +1,58 @@
+# Git hosting
+.github.com
+.gitlab.com
+.bitbucket.org
+
+# AI APIs
+# anthropic model traffic
+.anthropic.com
+# anthropic auth
+.claude.ai
+
+# openai auth
+.openai.com
+# openai model traffic
+.chatgpt.com
+
+# google auth
+accounts.google.com
+# google token exchange
+oauth2.googleapis.com
+# google api
+cloudcode-pa.googleapis.com
+
+# copilot model traffic
+.githubcopilot.com
+# copilot token exchange covered by .github.com
+
+# Python (pip, uv, pipx)
+.pypi.org
+.pythonhosted.org
+
+# Node.js (npm, yarn, pnpm)
+.npmjs.org
+.npmjs.com
+.yarnpkg.com
+
+# Rust (cargo)
+.crates.io
+
+# Go
+.golang.org
+.go.dev
+
+# Ruby (gem)
+.rubygems.org
+
+# Java / Kotlin (Maven, Gradle)
+.repo1.maven.org
+.plugins.gradle.org
+.services.gradle.org
+
+# Docker
+.docker.io
+.docker.com
+
+# Zig
+.ziglang.org
+.zigtools.org

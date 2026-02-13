@@ -1,0 +1,27 @@
+services:
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agent-sandbox:dev
+    container_name: agent-sandbox
+    # Interactive terminal UI friendly
+    tty: true
+    stdin_open: true
+
+    working_dir: /workspace
+
+    # Workspace bind mount (host-editable)
+    volumes:
+      - ./workspace:/workspace
+
+      # Persist the user's entire home across runs (caches, rustup, uv/pipx installs, etc.)
+      - agent_sandbox_home:/home/agent
+
+      # Pi config (bind mount nested inside the home volume)
+      - ./pi_config:/home/agent/.pi
+
+    # Ports and read-only bind mounts go in docker-compose.override.yml
+
+volumes:
+  agent_sandbox_home:
