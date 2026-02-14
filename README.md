@@ -4,7 +4,7 @@ Portable Docker sandbox for running AI agents interactively. Should work on linu
 
 Currently just installs pi agent, and has pi config mounted, but this can be used to run anything really.
 
-See `Dockerfile` for base image and installed tools. `docker-compose.yml` and `docker-compose.override.ym` for the sandbox and proxy configuration.
+See `Dockerfile` for base image and installed tools. `docker-compose.yml` and `docker-compose.override.yml` for the sandbox and proxy configuration.
 
 ## Usage
 
@@ -19,13 +19,19 @@ Agent runs as a non-root user (`agent`) with passwordless sudo, so it can instal
 Build and start an interactive shell:
 
 ```bash
-docker compose run --rm --build --name agent-sandbox sandbox
+./run.sh
 ```
 
-To run multiple unique containers, use a unique name for each:
+Custom container name (default is `agent-sandbox`):
 
 ```bash
-docker compose run --rm --build --name agent-sandbox-2 sandbox
+./run.sh -n my-sandbox
+```
+
+Pass extra args to `docker compose run` after `--`:
+
+```bash
+./run.sh -- --service-ports
 ```
 
 Attach another terminal to the running container:
@@ -51,10 +57,10 @@ docker compose down -v
 By default, the sandbox uses a domain allowlist proxy (see `proxy/allowlist.txt`).
 Only requests to listed domains are allowed — all other internet access is blocked.
 
-To disable the proxy and allow full internet access, skip the override file:
+To disable the proxy and allow full internet access (skips using the `docker-compose.override.yml` that configures the proxy):
 
 ```bash
-docker compose -f docker-compose.yml run --rm --build --name agent-sandbox sandbox
+./run.sh --no-proxy
 ```
 
 To fully disable networking:
@@ -84,10 +90,26 @@ The proxy runs as a Squid sidecar on an internal Docker network — the sandbox 
 Workarounds:
 
 - **Pre-fetch on the host:** run `zig fetch` or `zig build --fetch` on the host machine before starting the container.
-- **Disable the proxy:** if the proxy isn't needed, start without it:
+- **Disable the proxy:**
   ```bash
-  docker compose -f docker-compose.yml run --rm --build --name agent-sandbox sandbox
+  ./run.sh --no-proxy
   ```
+
+## Notifications
+
+`run.sh` bridges notifications from the container to native OS notifications on the host. The pi notify extension (`pi_config/agent/extensions/notify.ts`) detects when it's running inside Docker and writes JSON signal files to `~/.pi/notifications/`. A file watcher on the host picks these up and fires native notifications.
+
+This only activates when using `run.sh` — running `docker compose run` directly will not produce notification files.
+
+### Requirements
+
+| Platform | Watcher tool                                     | Notification tool                                                     |
+| -------- | ------------------------------------------------ | --------------------------------------------------------------------- |
+| macOS    | `fswatch` (`brew install fswatch`)               | `terminal-notifier` (`brew install terminal-notifier`) or `osascript` |
+| Linux    | `inotifywait` (`sudo apt install inotify-tools`) | `notify-send`                                                         |
+| WSL      | `inotifywait` (`sudo apt install inotify-tools`) | PowerShell balloon tip (built-in)                                     |
+
+If the watcher tool is missing, `run.sh` prints a warning and continues without notification bridging.
 
 ## Headed Browser (Playwright)
 
@@ -106,7 +128,7 @@ brew install --cask tigervnc-viewer
 Start the sandbox with `--service-ports` to publish the VNC port:
 
 ```bash
-docker compose -f docker-compose.yml run --rm --build --service-ports --name sig-sandbox sandbox
+./run.sh -n <container-name> -- --service-ports
 ```
 
 Inside the container, start the virtual display and VNC server:
