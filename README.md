@@ -88,3 +88,62 @@ Workarounds:
   ```bash
   docker compose -f docker-compose.yml run --rm --build --name agent-sandbox sandbox
   ```
+
+## Headed Browser (Playwright)
+
+The sandbox includes `@playwright/cli` (`playwright-cli`) with Chromium for browser automation. It works headless out of the box. For headed mode (visible browser window), the sandbox uses Xvfb + VNC so you can see and interact with the browser from your Mac.
+
+### Setup (one-time)
+
+Install a VNC client on macOS:
+
+```bash
+brew install --cask tigervnc-viewer
+```
+
+### Running with headed browser support
+
+Start the sandbox with `--service-ports` to publish the VNC port:
+
+```bash
+docker compose -f docker-compose.yml run --rm --build --service-ports --name sig-sandbox sandbox
+```
+
+Inside the container, start the virtual display and VNC server:
+
+NOTE: you need to have `start-vnc.sh` in the `./workspace` directory so it's mounted into the container at `/workspace/start-vnc.sh`.
+
+```bash
+source /workspace/start-vnc.sh
+```
+
+Connect from macOS:
+
+```bash
+open -a TigerVNC
+```
+
+Enter `localhost:5900` in the connection dialog. You'll see a black 1280×720 desktop.
+
+Now when the agent (or you) runs a headed browser, it appears in the VNC window:
+
+```bash
+playwright-cli open --browser=chromium --headed https://example.com
+```
+
+### Headless mode
+
+If you don't need to see the browser, skip `--service-ports` and `start-vnc.sh`. With no VNC server running, `playwright-cli` defaults to headless on Linux. You still get full functionality — screenshots, snapshots, page interaction, etc:
+
+```bash
+playwright-cli open --browser=chromium https://example.com
+playwright-cli screenshot
+playwright-cli snapshot
+```
+
+### Notes
+
+- **ARM64 (Apple Silicon):** Use `--browser=chromium`, not `--browser=chrome`. Chrome isn't available for ARM64 Linux; Chromium works fine.
+- **Headed flag:** `playwright-cli` daemon mode defaults to headless even with `DISPLAY` set. Always pass `--headed` explicitly when you want a visible browser.
+- **Browser binaries** are stored in `~/.cache/ms-playwright/` inside the persisted home volume. If you update `@playwright/cli`, run `playwright-cli install-browser` inside the container to download matching browser binaries.
+- **VNC is password-free** and only bound to localhost (via the Docker port mapping). It's not exposed to your network.

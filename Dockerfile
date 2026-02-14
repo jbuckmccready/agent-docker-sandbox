@@ -54,6 +54,38 @@ RUN mkdir -p /workspace /reads \
 ENV HOME=/home/agent \
     PATH=/home/agent/.local/bin:/home/agent/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# ---- Playwright browser system deps (X11, fonts, libs for headed & headless) ----
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    x11vnc \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxi6 \
+    libxrandr2 \
+    libxss1 \
+    libxtst6 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libxshmfence1 \
+    libatspi2.0-0 \
+    libnss3 \
+    libnspr4 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    fonts-liberation \
+    fonts-noto-color-emoji \
+  && rm -rf /var/lib/apt/lists/*
+
 # ---- Zig 0.14.1 (installed to /usr/local, outside the home volume) ----
 RUN ZIG_ARCH=$(uname -m) \
  && curl -fsSL -o /tmp/zig.tar.xz "https://ziglang.org/download/0.14.1/zig-${ZIG_ARCH}-linux-0.14.1.tar.xz" \
@@ -68,7 +100,8 @@ WORKDIR /workspace
 RUN pipx install uv
 
 RUN npm config set prefix /home/agent/.local \
- && npm install -g @mariozechner/pi-coding-agent
+ && npm install -g @mariozechner/pi-coding-agent \
+ && npm install -g @playwright/cli@latest
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal \
  && /home/agent/.cargo/bin/rustup toolchain install stable

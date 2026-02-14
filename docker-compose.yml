@@ -9,6 +9,10 @@ services:
     tty: true
     stdin_open: true
 
+    environment:
+      # Virtual display for headed Playwright browser (viewed via VNC)
+      - DISPLAY=:99
+
     working_dir: /workspace
 
     # Workspace bind mount (host-editable)
@@ -21,7 +25,10 @@ services:
       # Pi config (bind mount nested inside the home volume)
       - ./pi_config:/home/agent/.pi
 
-    # Ports and read-only bind mounts go in docker-compose.override.yml
+    ports:
+      - "5900:5900"
+
+    # Additional ports and read-only bind mounts go in docker-compose.override.yml
 
 volumes:
   agent_sandbox_home:
