@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     pipx \
     locales \
+    unzip \
   && rm -rf /var/lib/apt/lists/*
 
 # ---- Node.js 22 LTS via NodeSource ----
@@ -52,7 +53,7 @@ RUN mkdir -p /workspace /reads \
  && chown -R ${USERNAME}:${USERNAME} /workspace /reads
 
 ENV HOME=/home/agent \
-    PATH=/home/agent/.local/bin:/home/agent/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    PATH=/home/agent/.bun/bin:/home/agent/.local/bin:/home/agent/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # ---- Playwright browser system deps (X11, fonts, libs for headed & headless) ----
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -99,9 +100,10 @@ WORKDIR /workspace
 # ---- Install uv (via pipx) + rustup (user install) ----
 RUN pipx install uv
 
-RUN npm config set prefix /home/agent/.local \
- && npm install -g @mariozechner/pi-coding-agent \
- && npm install -g @playwright/cli@latest
+RUN curl -fsSL https://bun.sh/install | bash
+
+RUN bun install -g @mariozechner/pi-coding-agent \
+ && bun install -g @playwright/cli@latest
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal \
  && /home/agent/.cargo/bin/rustup toolchain install stable
