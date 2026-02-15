@@ -103,6 +103,7 @@ start_watcher() {
         fswatch -0 --event Created "$NOTIFY_DIR" | while IFS= read -r -d '' filepath; do
             [[ "$filepath" == *.json ]] && process_notification_file "$filepath"
         done &
+        WATCHER_PID=$!
     else
         if ! command -v inotifywait &>/dev/null; then
             echo "⚠  inotifywait not found (sudo apt install inotify-tools). Notifications won't be bridged."
@@ -111,17 +112,18 @@ start_watcher() {
         inotifywait -m -q -e close_write --format '%w%f' "$NOTIFY_DIR" | while IFS= read -r filepath; do
             [[ "$filepath" == *.json ]] && process_notification_file "$filepath"
         done &
+        WATCHER_PID=$!
     fi
-    WATCHER_PID=$!
 }
 
 cleanup() {
-    [[ -n "$WATCHER_PID" ]] && kill "$WATCHER_PID" 2>/dev/null && wait "$WATCHER_PID" 2>/dev/null
+    trap - EXIT INT TERM
+    [[ -n "$WATCHER_PID" ]] && kill "$WATCHER_PID" 2>/dev/null
     rm -f "$NOTIFY_DIR"/*.json 2>/dev/null
-    true
 }
 
-trap cleanup EXIT INT TERM
+trap 'cleanup; exit 130' INT TERM
+trap cleanup EXIT
 
 start_watcher
 
