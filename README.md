@@ -111,6 +111,15 @@ This only activates when using `run.sh` — running `docker compose run` directl
 
 If the watcher tool is missing, `run.sh` prints a warning and continues without notification bridging.
 
+## Git Workflow
+
+Create a fine grained personal access token for GitHub that is readonly, then authenticate gh cli inside the container: `echo "<your_token>" | gh auth login --with-token`.
+The agent can then do queries using the `gh` CLI tool to fetch PRs, comments, issues, etc. from GitHub, but it won't be able to push any changes.
+
+The global git config for the agent user is pre-configured in the Docker image (user: `Agent`, email: `agent@sandbox.local`), which allows the agent to make local commits that are clearly from the agent.
+
+Once changes are ready to be pushed, the commits can be amended or rebased with the correct author information (and signed if necessary) before pushing to GitHub from the host machine.
+
 ## Headed Browser (Playwright)
 
 The sandbox includes `@playwright/cli` (`playwright-cli`) with Chromium for browser automation. It works headless out of the box. For headed mode (visible browser window), the sandbox uses Xvfb + VNC so you can see and interact with the browser from your Mac.
