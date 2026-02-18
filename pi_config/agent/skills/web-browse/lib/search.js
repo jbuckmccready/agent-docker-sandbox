@@ -205,21 +205,12 @@ export async function searchWebFromContext({
 } = {}) {
   let results = [];
 
+  // Skip Google (blocked/captcha) — go straight to DuckDuckGo
   try {
-    results = await searchGoogleFromContext(context, query, numResults);
+    results = await searchDuckDuckGo(httpFetch, headers, query, numResults);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    log(`Google search failed: ${message}`);
-  }
-
-  if (results.length === 0) {
-    log("Google returned no results. Falling back to DuckDuckGo...");
-    try {
-      results = await searchDuckDuckGo(httpFetch, headers, query, numResults);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log(`DuckDuckGo search failed: ${message}`);
-    }
+    log(`DuckDuckGo search failed: ${message}`);
   }
 
   return results;
