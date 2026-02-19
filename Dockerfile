@@ -116,10 +116,12 @@ RUN pipx install uv
 RUN curl -fsSL https://bun.sh/install | bash
 
 RUN bun install -g @mariozechner/pi-coding-agent \
- && bun install -g @playwright/cli@latest
+ && bun install -g @playwright/cli@latest \
+ && bunx playwright install chromium
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal \
- && /home/agent/.cargo/bin/rustup toolchain install stable
+ && /home/agent/.cargo/bin/rustup toolchain install stable \
+ && /home/agent/.cargo/bin/rustup component add rustfmt
 
 # tini handles signals well (important for interactive TUIs)
 ENTRYPOINT ["/usr/bin/tini","-s","--"]

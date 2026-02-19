@@ -14,6 +14,12 @@ See `Dockerfile` for base image and installed tools. `docker-compose.yml` and `d
 
 `/home/agent` is persisted via a named Docker volume, so caches, installed tools, etc. will persist across container restarts. Note that `docker compose down -v` will delete this volume, but the bind mounts (`./workspace` and `./pi_config`) are unaffected.
 
+> **Note:** If you change user-local tool installations in the Dockerfile (e.g. bun, rustup, uv, playwright), the named home volume will **not** be recreated automatically — Docker only populates it on first creation. You must delete the volume for changes to take effect:
+>
+> ```bash
+> docker compose down && docker volume rm <name of home volume>
+> ```
+
 Agent runs as a non-root user (`agent`) with passwordless sudo, so it can install packages, etc. All three mounted paths (`/workspace`, `/home/agent/.pi`, and `/home/agent`) persist across container restarts.
 
 Build and start an interactive shell:

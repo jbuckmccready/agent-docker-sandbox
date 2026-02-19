@@ -95,25 +95,15 @@ process_notification_file() {
 start_watcher() {
     mkdir -p "$NOTIFY_DIR"
 
-    if [[ "$PLATFORM" == "macos" ]]; then
-        if ! command -v fswatch &>/dev/null; then
-            echo "⚠  fswatch not found (brew install fswatch). Notifications won't be bridged."
-            return
-        fi
-        fswatch -0 --event Created "$NOTIFY_DIR" | while IFS= read -r -d '' filepath; do
-            [[ "$filepath" == *.json ]] && process_notification_file "$filepath"
-        done &
-        WATCHER_PID=$!
-    else
-        if ! command -v inotifywait &>/dev/null; then
-            echo "⚠  inotifywait not found (sudo apt install inotify-tools). Notifications won't be bridged."
-            return
-        fi
-        inotifywait -m -q -e close_write --format '%w%f' "$NOTIFY_DIR" | while IFS= read -r filepath; do
-            [[ "$filepath" == *.json ]] && process_notification_file "$filepath"
-        done &
-        WATCHER_PID=$!
-    fi
+    # Poll for notification files. FSEvents is unreliable on directories under
+    # Docker's VirtioFS bind mounts, so we use simple polling instead.
+    while true; do
+        for f in "$NOTIFY_DIR"/*.json; do
+            [[ -f "$f" ]] && process_notification_file "$f"
+        done
+        sleep 5
+    done &
+    WATCHER_PID=$!
 }
 
 cleanup() {
