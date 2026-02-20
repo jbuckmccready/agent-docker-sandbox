@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pipx \
     locales \
     unzip \
+    chromium \
   && rm -rf /var/lib/apt/lists/*
 
 # ---- GitHub CLI ----

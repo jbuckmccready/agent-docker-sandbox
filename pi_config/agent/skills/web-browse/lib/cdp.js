@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer as createNetServer } from "node:net";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 
 import { resolveBrowserBin } from "./browser-bin.js";
 
@@ -84,11 +86,19 @@ export async function startBrowserForCdp(preferredPort, profileDir, browserBin =
   const bin = resolveBrowserBin(browserBin);
   const port = await chooseAvailablePort(preferredPort);
 
+  // Remove stale singleton lock files left behind by ungracefully killed Chrome instances.
+  // Without this, Chrome silently exits on startup when it finds an existing lock.
+  for (const name of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+    try { rmSync(join(profileDir, name), { force: true }); } catch { /* ignore */ }
+  }
+
   const args = [
     "--ozone-platform=headless",
     "--ozone-override-screen-size=1280,720",
     "--no-sandbox",
     "--disable-setuid-sandbox",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
     "--no-first-run",
     "--no-default-browser-check",
 
