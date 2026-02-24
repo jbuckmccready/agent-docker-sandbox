@@ -60,4 +60,4 @@ Write corrections to the original file.
 
 Ultrathink.
 
-$@
+$ARGUMENTS

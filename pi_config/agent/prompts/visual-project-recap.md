@@ -56,4 +56,4 @@ Include responsive section navigation. Use a warm, approachable visual language:
 
 Ultrathink.
 
-$@
+$ARGUMENTS

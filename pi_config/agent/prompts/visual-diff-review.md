@@ -63,4 +63,4 @@ Include responsive section navigation. Use diff-style visual language throughout
 
 Ultrathink.
 
-$@
+$ARGUMENTS
