@@ -97,16 +97,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-color-emoji \
   && rm -rf /var/lib/apt/lists/*
 
-# ---- Zig 0.14.1 (installed to /usr/local, outside the home volume) ----
+# ---- Zig 0.15.2 (installed to /usr/local, outside the home volume) ----
 RUN ZIG_ARCH=$(uname -m) \
- && curl -fsSL -o /tmp/zig.tar.xz "https://ziglang.org/download/0.14.1/zig-${ZIG_ARCH}-linux-0.14.1.tar.xz" \
+ && curl -fsSL -o /tmp/zig.tar.xz "https://ziglang.org/download/0.15.2/zig-${ZIG_ARCH}-linux-0.15.2.tar.xz" \
  && tar -xJf /tmp/zig.tar.xz -C /usr/local \
- && ln -s /usr/local/zig-${ZIG_ARCH}-linux-0.14.1/zig /usr/local/bin/zig \
+ && ln -s /usr/local/zig-${ZIG_ARCH}-linux-0.15.2/zig /usr/local/bin/zig \
  && rm /tmp/zig.tar.xz
 
 # ---- System-wide default git config for agent to make local commits ----
 RUN git config --system user.name "Agent" \
  && git config --system user.email "agent@sandbox.local"
+
+RUN npm install -g @mariozechner/pi-coding-agent \
+ && npm install -g @playwright/cli@latest \
+ && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 
 USER ${USERNAME}
 WORKDIR /workspace
@@ -116,9 +120,7 @@ RUN pipx install uv
 
 RUN curl -fsSL https://bun.sh/install | bash
 
-RUN bun install -g @mariozechner/pi-coding-agent \
- && bun install -g @playwright/cli@latest \
- && bunx playwright install chromium
+RUN npx playwright install chromium
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal \
  && /home/agent/.cargo/bin/rustup toolchain install stable \
