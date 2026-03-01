@@ -108,8 +108,7 @@ RUN ZIG_ARCH=$(uname -m) \
 RUN git config --system user.name "Agent" \
  && git config --system user.email "agent@sandbox.local"
 
-RUN npm install -g @mariozechner/pi-coding-agent \
- && npm install -g @playwright/cli@latest \
+RUN npm install -g @playwright/cli@latest \
  && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 
 USER ${USERNAME}
@@ -126,6 +125,6 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal \
  && /home/agent/.cargo/bin/rustup toolchain install stable \
  && /home/agent/.cargo/bin/rustup component add rustfmt
 
-# tini handles signals well (important for interactive TUIs)
+# tini handles signal forwarding and zombie reaping as PID 1
 ENTRYPOINT ["/usr/bin/tini","-s","--"]
 CMD ["bash"]

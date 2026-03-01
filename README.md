@@ -2,17 +2,29 @@
 
 Portable Docker sandbox for running AI agents interactively. Should work on linux, macOS (tested), and Windows with WSL2.
 
-Currently just installs pi agent, and has pi config mounted, but this can be used to run anything really.
+Intended to be used with the [pi docker sandbox extension](https://github.com/jbuckmccready/dotfiles/blob/main/pi/.pi/agent/extensions/tools/docker-sandbox.ts), which routes all pi tool operations (bash, read, write, edit, grep, find, ls) through the container via a persistent `docker exec` session. Bind mounts are auto-detected and host paths are translated to container paths automatically.
 
 See `Dockerfile` for base image and installed tools. `docker-compose.yml` and `docker-compose.override.yml` for the sandbox and proxy configuration.
 
 ## Usage
 
-`./workspace` is read/write mounted into the container as `/workspace` - this is where you probably want everything the agent will work with.
+Start the container:
 
-`./pi_config` is read/write mounted into the container as `/home/agent/.pi` for pi agent config. Write is required for sessions, extension generated files, `auth.json` and `settings.json`.
+```bash
+./run.sh
+```
 
-`/home/agent` is persisted via a named Docker volume, so caches, installed tools, etc. will persist across container restarts. Note that `docker compose down -v` will delete this volume, but the bind mounts (`./workspace` and `./pi_config`) are unaffected.
+The extension connects to the running container and routes all tool calls into it. Configure the extension via `~/.pi/agent/sandbox.json`:
+
+```json
+{ "type": "docker", "container": "pi-docker-sandbox" }
+```
+
+`./workspace` is read/write mounted into the container as `/workspace` — this is where you probably want everything the agent will work with.
+
+`~/.pi/agent/skills` is read-only mounted into the container so the agent has access to skill files.
+
+`/home/agent` is persisted via a named Docker volume, so caches, installed tools, etc. will persist across container restarts. Note that `docker compose down -v` will delete this volume, but the bind mounts are unaffected.
 
 > **Note:** If you change user-local tool installations in the Dockerfile (e.g. bun, rustup, uv, playwright), the named home volume will **not** be recreated automatically — Docker only populates it on first creation. You must delete the volume for changes to take effect:
 >
@@ -20,15 +32,9 @@ See `Dockerfile` for base image and installed tools. `docker-compose.yml` and `d
 > docker compose down && docker volume rm <name of home volume>
 > ```
 
-Agent runs as a non-root user (`agent`) with passwordless sudo, so it can install packages, etc. All three mounted paths (`/workspace`, `/home/agent/.pi`, and `/home/agent`) persist across container restarts.
+Agent runs as a non-root user (`agent`) with passwordless sudo, so it can install packages, etc.
 
-Build and start an interactive shell:
-
-```bash
-./run.sh
-```
-
-Custom container name (default is `agent-sandbox`):
+Custom container name (default is `pi-docker-sandbox`):
 
 ```bash
 ./run.sh -n my-sandbox
@@ -100,22 +106,6 @@ Workarounds:
   ```bash
   ./run.sh --no-proxy
   ```
-
-## Notifications
-
-`run.sh` bridges notifications from the container to native OS notifications on the host. The pi notify extension (`pi_config/agent/extensions/notify.ts`) detects when it's running inside Docker and writes JSON signal files to `~/.pi/notifications/`. A file watcher on the host picks these up and fires native notifications.
-
-This only activates when using `run.sh` — running `docker compose run` directly will not produce notification files.
-
-### Requirements
-
-| Platform | Watcher tool                                     | Notification tool                                                     |
-| -------- | ------------------------------------------------ | --------------------------------------------------------------------- |
-| macOS    | `fswatch` (`brew install fswatch`)               | `terminal-notifier` (`brew install terminal-notifier`) or `osascript` |
-| Linux    | `inotifywait` (`sudo apt install inotify-tools`) | `notify-send`                                                         |
-| WSL      | `inotifywait` (`sudo apt install inotify-tools`) | PowerShell balloon tip (built-in)                                     |
-
-If the watcher tool is missing, `run.sh` prints a warning and continues without notification bridging.
 
 ## Git Workflow
 

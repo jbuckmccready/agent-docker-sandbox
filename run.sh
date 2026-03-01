@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # run.sh — Host-side launcher for the Docker agent sandbox.
 #
-# Bridges notification signal files from the container into native OS
-# notifications via a file watcher on the bind-mounted pi_config/notifications/.
-#
 # Usage:
 #   ./run.sh                           # default (proxy on, name=agent-sandbox)
 #   ./run.sh -n my-sandbox             # custom container name
@@ -13,109 +10,28 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NOTIFY_DIR="${SCRIPT_DIR}/pi_config/notifications"
-WATCHER_PID=""
-CONTAINER_NAME="agent-sandbox"
+CONTAINER_NAME="pi-docker-sandbox"
 NO_PROXY=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -n|--name)
-            CONTAINER_NAME="$2"
-            shift 2
-            ;;
-        --no-proxy)
-            NO_PROXY=true
-            shift
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            break
-            ;;
+    -n | --name)
+        CONTAINER_NAME="$2"
+        shift 2
+        ;;
+    --no-proxy)
+        NO_PROXY=true
+        shift
+        ;;
+    --)
+        shift
+        break
+        ;;
+    *)
+        break
+        ;;
     esac
 done
-
-if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
-    PLATFORM="wsl"
-elif [[ "$(uname -s)" == "Darwin" ]]; then
-    PLATFORM="macos"
-else
-    PLATFORM="linux"
-fi
-
-fire_notification() {
-    local title="$1" body="$2"
-    case "$PLATFORM" in
-        macos)
-            if command -v terminal-notifier &>/dev/null; then
-                terminal-notifier -title "$title" -message "$body" -sound Ping &>/dev/null &
-            elif command -v osascript &>/dev/null; then
-                osascript -e "display notification \"$body\" with title \"$title\" sound name \"Ping\"" &>/dev/null &
-            fi
-            ;;
-        linux)
-            if command -v notify-send &>/dev/null; then
-                notify-send "$title" "$body" &>/dev/null &
-            fi
-            ;;
-        wsl)
-            local safe_title="${title//\'/\\\'}"
-            local safe_body="${body//\'/\\\'}"
-            powershell.exe -Command "
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-(New-Object Media.SoundPlayer 'C:\Windows\Media\ding.wav').Play()
-\$n = New-Object System.Windows.Forms.NotifyIcon
-\$n.Icon = [System.Drawing.SystemIcons]::Information
-\$n.BalloonTipTitle = '${safe_title}'
-\$n.BalloonTipText = '${safe_body}'
-\$n.Visible = \$true
-\$n.ShowBalloonTip(5000)
-Start-Sleep -Seconds 5
-\$n.Dispose()
-" &>/dev/null &
-            ;;
-    esac
-}
-
-process_notification_file() {
-    local filepath="$1"
-    [[ -f "$filepath" ]] || return
-    local title body
-    title="$(jq -r '.title // "Pi"' "$filepath" 2>/dev/null || echo "Pi")"
-    body="$(jq -r '.body // ""' "$filepath" 2>/dev/null || echo "")"
-    rm -f "$filepath"
-    [[ -n "$body" ]] && fire_notification "$title" "$body"
-}
-
-start_watcher() {
-    mkdir -p "$NOTIFY_DIR"
-
-    # Poll for notification files. FSEvents is unreliable on directories under
-    # Docker's VirtioFS bind mounts, so we use simple polling instead.
-    while true; do
-        for f in "$NOTIFY_DIR"/*.json; do
-            [[ -f "$f" ]] && process_notification_file "$f"
-        done
-        sleep 5
-    done &
-    WATCHER_PID=$!
-}
-
-cleanup() {
-    trap - EXIT INT TERM
-    [[ -n "$WATCHER_PID" ]] && kill "$WATCHER_PID" 2>/dev/null
-    rm -f "$NOTIFY_DIR"/*.json 2>/dev/null
-}
-
-trap 'cleanup; exit 130' INT TERM
-trap cleanup EXIT
-
-start_watcher
 
 COMPOSE_FILES=(-f docker-compose.yml)
 if [[ "$NO_PROXY" == false ]]; then
@@ -123,4 +39,4 @@ if [[ "$NO_PROXY" == false ]]; then
 fi
 
 echo "🚀 Starting agent sandbox (name=$CONTAINER_NAME, proxy=$([[ "$NO_PROXY" == false ]] && echo "on" || echo "off"))..."
-docker compose "${COMPOSE_FILES[@]}" run --rm --build --name "$CONTAINER_NAME" -e PI_NOTIFY_BRIDGE=1 "$@" sandbox
+docker compose "${COMPOSE_FILES[@]}" run --rm --build --name "$CONTAINER_NAME" "$@" sandbox
