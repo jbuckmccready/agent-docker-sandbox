@@ -103,19 +103,21 @@ Workarounds:
 
 ## Notifications
 
-`run.sh` bridges notifications from the container to native OS notifications on the host. The pi notify extension (`pi_config/agent/extensions/notify.ts`) detects when it's running inside Docker and writes JSON signal files to `~/.pi/notifications/`. A file watcher on the host picks these up and fires native notifications.
+`run.sh` bridges notifications from the container to native OS notifications on the host. The pi notify extension (`pi_config/agent/extensions/notify.ts`) detects when it's running inside Docker and writes JSON signal files to `~/.pi/notifications/`.
+
+On the host, `run.sh` polls that directory every 5 seconds and forwards notifications to the OS.
 
 This only activates when using `run.sh` — running `docker compose run` directly will not produce notification files.
 
 ### Requirements
 
-| Platform | Watcher tool                                     | Notification tool                                                     |
-| -------- | ------------------------------------------------ | --------------------------------------------------------------------- |
-| macOS    | `fswatch` (`brew install fswatch`)               | `terminal-notifier` (`brew install terminal-notifier`) or `osascript` |
-| Linux    | `inotifywait` (`sudo apt install inotify-tools`) | `notify-send`                                                         |
-| WSL      | `inotifywait` (`sudo apt install inotify-tools`) | PowerShell balloon tip (built-in)                                     |
+| Platform | Notification tool                                                     |
+| -------- | --------------------------------------------------------------------- |
+| macOS    | `terminal-notifier` (`brew install terminal-notifier`) or `osascript` |
+| Linux    | `notify-send`                                                         |
+| WSL      | PowerShell balloon tip (built-in)                                     |
 
-If the watcher tool is missing, `run.sh` prints a warning and continues without notification bridging.
+If the notification tool for your platform is unavailable, `run.sh` continues without showing desktop notifications.
 
 ## Git Workflow
 
