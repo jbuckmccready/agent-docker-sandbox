@@ -14,6 +14,33 @@ See `Dockerfile` for base image and installed tools. `docker-compose.yml` and `d
 
 `/home/agent` is persisted via a named Docker volume, so caches, installed tools, etc. will persist across container restarts. Note that `docker compose down -v` will delete this volume, but the bind mounts (`./workspace` and `./pi_config`) are unaffected.
 
+### Quick Start
+
+```bash
+./run.sh --no-proxy
+```
+
+Then inside the container on first use:
+
+```bash
+cd /home/agent/.pi/agent/extensions/tools
+sudo npm install
+```
+
+This is required to pull in external npm dependencies for the pi tools extension.
+
+Launch Pi agent:
+
+```bash
+pi
+```
+
+Should show "Sandbox disabled (Pi inside Docker)" as a status line at the bottom (tool level sandboxing is disabled and detects it is inside Docker).
+
+Then from in Pi use `/login` to login with subscription (OpenAI, Github, etc.), or setup your API keys as you usually would for Pi (see Pi docs for details).
+
+### Additional Notes on Usage
+
 > **Note:** If you change user-local tool installations in the Dockerfile (e.g. bun, rustup, uv, playwright), the named home volume will **not** be recreated automatically — Docker only populates it on first creation. You must delete the volume for changes to take effect:
 >
 > ```bash
