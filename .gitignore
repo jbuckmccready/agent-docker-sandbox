@@ -3,3 +3,4 @@
 /pi_config/agent/settings.json
 /pi_config/notifications
 /workspace
+.DS_Store

@@ -1,0 +1,457 @@
+/**
+ * Gondolin sandbox provider — runs pi tools inside a Gondolin micro-VM.
+ * https://github.com/earendil-works/gondolin
+ * Only works on MacOS and linux hosts where QEMU is available.
+ *
+ * The host working directory is mounted read-write at /workspace inside the VM.
+ * Network access, secrets, and file visibility are controlled via sandbox.json.
+ *
+ * Example ~/.pi/agent/sandbox.json:
+ *
+ *   {
+ *     "type": "gondolin",
+ *     "guestDir": "~/dotfiles/gondolin/rust-assets",
+ *     "allowedHosts": [
+ *       "github.com",
+ *       "*.github.com",
+ *       "crates.io",
+ *       "*.crates.io"
+ *     ],
+ *     "secrets": {
+ *       "GH_TOKEN": {
+ *         "hosts": ["api.github.com", "github.com"],
+ *         "fromEnv": "GH_TOKEN_READONLY"
+ *       }
+ *     },
+ *     "excludePaths": [".env", ".envrc"]
+ *   }
+ *
+ * Config fields:
+ *   guestDir      — path to custom guest image assets (built via `gondolin build`)
+ *   memory        — VM memory size in QEMU syntax (e.g. "2G", "512M"). Default: "1G"
+ *   cpus          — VM vCPU count. Default: 2
+ *   allowedHosts  — HTTP egress allowlist, passed to gondolin's createHttpHooks.
+ *                   Omit or set to [] to block all network. Use ["*"] for open network.
+ *   secrets       — keys map to env var names, read from host env at init time.
+ *                   Use "fromEnv" to read from a different host env var than the key name.
+ *                   Real values never enter the VM — gondolin injects placeholders
+ *                   and substitutes on outbound HTTP requests to allowed hosts.
+ *   excludePaths  — workspace-relative paths hidden from the guest via ShadowProvider
+ */
+import { constants, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
+import type { ExtensionUIContext } from "@mariozechner/pi-coding-agent";
+import type {
+    BashOperations,
+    ReadOperations,
+    WriteOperations,
+    EditOperations,
+    FindOperations,
+    LsOperations,
+} from "@mariozechner/pi-coding-agent";
+import {
+    VM,
+    RealFSProvider,
+    ReadonlyProvider,
+    ShadowProvider,
+    createShadowPathPredicate,
+    createHttpHooks,
+} from "@earendil-works/gondolin";
+import type {
+    GondolinSandboxConfig,
+    SandboxProvider,
+    SandboxOps,
+} from "./sandbox-shared";
+import {
+    type StreamingExec,
+    createSandboxedGrepExecute,
+    sandboxedFdGlob,
+} from "./sandbox-tools";
+import { detectImageMimeFromBytes } from "./shared";
+
+const GUEST_WORKSPACE = "/workspace";
+const GUEST_HOME = "/root";
+const GUEST_SKILLS_DIR = `${GUEST_HOME}/.pi/agent/skills`;
+const HOST_HOME = homedir();
+
+function shQuote(value: string): string {
+    return "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
+export function hostToGuestPath(localCwd: string, localPath: string): string {
+    if (localPath === "~") return GUEST_HOME;
+    if (localPath.startsWith("~/")) {
+        return path.posix.join(GUEST_HOME, localPath.slice(2));
+    }
+
+    if (!path.isAbsolute(localPath)) {
+        const posixRel = localPath.split(path.sep).join(path.posix.sep);
+        if (posixRel === "" || posixRel === ".") return GUEST_WORKSPACE;
+        if (!posixRel.startsWith("..")) {
+            // Relative path inside the workspace
+            return path.posix.join(GUEST_WORKSPACE, posixRel);
+        }
+        // Relative path escaping workspace — resolve relative to /workspace
+        return path.posix.resolve(GUEST_WORKSPACE, posixRel);
+    }
+
+    const rel = path.relative(localCwd, localPath);
+    if (rel === "") return GUEST_WORKSPACE;
+
+    const posixRel = rel.split(path.sep).join(path.posix.sep);
+    if (!rel.startsWith("..") && !path.isAbsolute(rel)) {
+        // Absolute path inside the workspace
+        return path.posix.join(GUEST_WORKSPACE, posixRel);
+    }
+
+    // Absolute path under host home should map to guest home.
+    if (localPath === HOST_HOME) return GUEST_HOME;
+    const hostHomePrefix = HOST_HOME + path.sep;
+    if (localPath.startsWith(hostHomePrefix)) {
+        const homeRel = localPath.slice(hostHomePrefix.length);
+        return path.posix.join(GUEST_HOME, ...homeRel.split(path.sep));
+    }
+
+    // Absolute path outside workspace — pass through as-is
+    return localPath;
+}
+
+function createGondolinReadOps(vm: VM, localCwd: string): ReadOperations {
+    return {
+        async readFile(p) {
+            const guestPath = hostToGuestPath(localCwd, p);
+            return vm.fs.readFile(guestPath);
+        },
+        async access(p) {
+            const guestPath = hostToGuestPath(localCwd, p);
+            await vm.fs.access(guestPath, { mode: constants.R_OK });
+        },
+        async detectImageMimeType(p) {
+            const guestPath = hostToGuestPath(localCwd, p);
+            try {
+                const r = await vm.exec([
+                    "/bin/sh",
+                    "-c",
+                    `head -c 16 ${shQuote(guestPath)} | base64`,
+                ]);
+
+                if (!r.ok) return null;
+                return detectImageMimeFromBytes(
+                    Buffer.from(r.stdout.trim(), "base64"),
+                );
+            } catch {
+                return null;
+            }
+        },
+    };
+}
+
+function createGondolinWriteOps(vm: VM, localCwd: string): WriteOperations {
+    return {
+        async writeFile(p, content) {
+            const guestPath = hostToGuestPath(localCwd, p);
+            const dir = path.posix.dirname(guestPath);
+            await vm.fs.mkdir(dir, { recursive: true });
+            await vm.fs.writeFile(guestPath, content);
+        },
+        async mkdir(dir) {
+            const guestDir = hostToGuestPath(localCwd, dir);
+            await vm.fs.mkdir(guestDir, { recursive: true });
+        },
+    };
+}
+
+function createGondolinEditOps(vm: VM, localCwd: string): EditOperations {
+    const r = createGondolinReadOps(vm, localCwd);
+    const w = createGondolinWriteOps(vm, localCwd);
+    return { readFile: r.readFile, access: r.access, writeFile: w.writeFile };
+}
+
+function createGondolinBashOps(vm: VM, localCwd: string): BashOperations {
+    return {
+        async exec(command, cwd, { onData, signal, timeout }) {
+            const guestCwd = hostToGuestPath(localCwd, cwd);
+            const ac = new AbortController();
+            const onAbort = () => ac.abort();
+            signal?.addEventListener("abort", onAbort, { once: true });
+
+            let timedOut = false;
+            const timer =
+                timeout && timeout > 0
+                    ? setTimeout(() => {
+                          timedOut = true;
+                          ac.abort();
+                      }, timeout * 1000)
+                    : undefined;
+
+            try {
+                const proc = vm.exec(["/bin/bash", "-lc", command], {
+                    cwd: guestCwd,
+                    signal: ac.signal,
+                    // Don't pass env from host; the VM has its own environment.
+                    // Avoids confusing agent and leaking secrets from host.
+                    env: undefined,
+                    stdout: "pipe",
+                    stderr: "pipe",
+                });
+                for await (const chunk of proc.output()) {
+                    onData(chunk.data);
+                }
+                const r = await proc;
+                return { exitCode: r.exitCode };
+            } catch (err) {
+                if (signal?.aborted) throw new Error("aborted");
+                if (timedOut) throw new Error(`timeout:${timeout}`);
+                throw err;
+            } finally {
+                if (timer) clearTimeout(timer);
+                signal?.removeEventListener("abort", onAbort);
+            }
+        },
+    };
+}
+
+function createGondolinExec(vm: VM): StreamingExec {
+    return async (cmd, { signal, onStdout, onStderr }) => {
+        const proc = vm.exec(["/bin/sh", "-lc", cmd], {
+            signal,
+            stdout: "pipe",
+            stderr: "pipe",
+        });
+        for await (const chunk of proc.output()) {
+            if (chunk.stream === "stderr") onStderr(chunk.text);
+            else onStdout(chunk.text);
+        }
+        const result = await proc;
+        return { exitCode: result.exitCode };
+    };
+}
+
+function createGondolinGrepExecute(vm: VM): SandboxOps["grepExecute"] {
+    return createSandboxedGrepExecute({
+        resolveSearchPath: (userPath) =>
+            path.posix.isAbsolute(userPath)
+                ? userPath
+                : path.posix.join(GUEST_WORKSPACE, userPath),
+        exec: createGondolinExec(vm),
+    });
+}
+
+function createGondolinFindOps(vm: VM, localCwd: string): FindOperations {
+    const exec = createGondolinExec(vm);
+    return {
+        async exists(p) {
+            const guestPath = hostToGuestPath(localCwd, p);
+            try {
+                await vm.fs.access(guestPath);
+                return true;
+            } catch {
+                return false;
+            }
+        },
+        async glob(pattern, cwd, options) {
+            const guestCwd = hostToGuestPath(localCwd, cwd);
+            return sandboxedFdGlob({
+                pattern,
+                guestCwd,
+                searchPath: cwd,
+                limit: options.limit,
+                exec,
+            });
+        },
+    };
+}
+
+function createGondolinLsOps(vm: VM, localCwd: string): LsOperations {
+    return {
+        async exists(p) {
+            const guestPath = hostToGuestPath(localCwd, p);
+            try {
+                await vm.fs.access(guestPath);
+                return true;
+            } catch {
+                return false;
+            }
+        },
+        async stat(p) {
+            const guestPath = hostToGuestPath(localCwd, p);
+            try {
+                return await vm.fs.stat(guestPath);
+            } catch (err) {
+                const message =
+                    err instanceof Error ? err.message.toLowerCase() : "";
+                if (message.includes("enoent") || message.includes("no such")) {
+                    throw new Error(`Path not found: ${guestPath}`);
+                }
+                throw err;
+            }
+        },
+        async readdir(p) {
+            const guestPath = hostToGuestPath(localCwd, p);
+            const entries = await vm.fs.listDir(guestPath);
+            return entries.sort();
+        },
+    };
+}
+
+export function createGondolinSandbox(): SandboxProvider<GondolinSandboxConfig> {
+    let vm: VM | null = null;
+    let localCwd = "";
+    let ops: SandboxOps = {};
+    let ui: ExtensionUIContext | null = null;
+    let savedConfig: GondolinSandboxConfig | null = null;
+    let savedHostSkillsDir = "";
+
+    return {
+        async init(cwd: string, uiCtx, config: GondolinSandboxConfig) {
+            savedConfig = config;
+            ui = uiCtx;
+            localCwd = cwd;
+
+            savedHostSkillsDir = path.join(homedir(), ".pi", "agent", "skills");
+            const realSkillsDir = realpathSync(savedHostSkillsDir);
+
+            let guestDir = config.guestDir;
+            if (guestDir?.startsWith("~/")) {
+                guestDir = path.join(homedir(), guestDir.slice(2));
+            }
+
+            const excludePaths = config.excludePaths ?? [];
+            const workspaceProvider =
+                excludePaths.length > 0
+                    ? new ShadowProvider(new RealFSProvider(localCwd), {
+                          shouldShadow: createShadowPathPredicate(
+                              excludePaths.map((p) => "/" + p),
+                          ),
+                      })
+                    : new RealFSProvider(localCwd);
+
+            const allowedHosts = config.allowedHosts;
+            const networkEnabled =
+                allowedHosts !== undefined && allowedHosts.length > 0;
+
+            const secrets: Record<string, { hosts: string[]; value: string }> =
+                {};
+            if (networkEnabled) {
+                for (const [name, def] of Object.entries(
+                    config.secrets ?? {},
+                )) {
+                    const value = process.env[def.fromEnv ?? name];
+                    if (!value) continue;
+                    secrets[name] = { hosts: def.hosts, value };
+                }
+            }
+
+            const { httpHooks, env } = networkEnabled
+                ? createHttpHooks({ allowedHosts, secrets })
+                : createHttpHooks({
+                      isRequestAllowed: async () => false,
+                      isIpAllowed: async () => false,
+                  });
+
+            const vmPromise = VM.create({
+                ...(guestDir ? { sandbox: { imagePath: guestDir } } : {}),
+                ...(config.memory ? { memory: config.memory } : {}),
+                ...(config.cpus ? { cpus: config.cpus } : {}),
+                httpHooks,
+                env: { HOME: GUEST_HOME, ...env },
+                vfs: {
+                    mounts: {
+                        [GUEST_WORKSPACE]: workspaceProvider,
+                        [GUEST_SKILLS_DIR]: new ReadonlyProvider(
+                            new RealFSProvider(realSkillsDir),
+                        ),
+                    },
+                },
+            });
+
+            ui.setStatus(
+                "sandbox",
+                ui.theme.fg(
+                    "accent",
+                    `🏰 Gondolin sandbox: starting (${localCwd} → ${GUEST_WORKSPACE})`,
+                ),
+            );
+
+            vm = await vmPromise;
+
+            const excludeCount = excludePaths.length;
+            const totalSecretCount = Object.keys(config.secrets ?? {}).length;
+            const loadedSecretCount = Object.keys(secrets).length;
+            const networkLabel = !networkEnabled
+                ? "no network"
+                : allowedHosts!.includes("*")
+                  ? "open network"
+                  : `${allowedHosts!.length} hosts`;
+            const parts = [
+                `🏰 Gondolin sandbox: ${networkLabel}`,
+                `${excludeCount} excluded path${excludeCount !== 1 ? "s" : ""}`,
+                `${loadedSecretCount}/${totalSecretCount} secrets loaded`,
+            ];
+            ui.setStatus("sandbox", ui.theme.fg("accent", parts.join(", ")));
+
+            ops = {
+                bash: createGondolinBashOps(vm, localCwd),
+                read: createGondolinReadOps(vm, localCwd),
+                write: createGondolinWriteOps(vm, localCwd),
+                edit: createGondolinEditOps(vm, localCwd),
+                // NOTE: override grepExecute so it uses rg inside the VM sandbox
+                grepExecute: createGondolinGrepExecute(vm),
+                find: createGondolinFindOps(vm, localCwd),
+                ls: createGondolinLsOps(vm, localCwd),
+            };
+        },
+
+        async shutdown() {
+            if (vm) {
+                ui?.setStatus(
+                    "sandbox",
+                    ui.theme.fg("muted", "Gondolin sandbox: stopping"),
+                );
+                try {
+                    await vm.close();
+                } catch {}
+                vm = null;
+                ops = {};
+            }
+        },
+
+        isActive() {
+            return vm !== null;
+        },
+
+        getOps(): SandboxOps {
+            if (!vm) throw new Error("Gondolin sandbox not initialized");
+            return ops;
+        },
+
+        describe() {
+            return [
+                "Sandbox: gondolin",
+                `  Guest Dir: ${savedConfig?.guestDir || "(default)"}`,
+                `  Memory: ${savedConfig?.memory || "(default: 1G)"}`,
+                `  CPUs: ${savedConfig?.cpus || "(default: 2)"}`,
+                `  Allowed Hosts: ${savedConfig?.allowedHosts?.join(", ") || "(none)"}`,
+                `  Secrets: ${Object.keys(savedConfig?.secrets ?? {}).join(", ") || "(none)"}`,
+                `  Exclude Paths: ${savedConfig?.excludePaths?.join(", ") || "(none)"}`,
+            ];
+        },
+
+        patchSystemPrompt(systemPrompt: string) {
+            if (!vm) return systemPrompt;
+            let modified = systemPrompt.replace(
+                `Current working directory: ${localCwd}`,
+                `Current working directory: ${GUEST_WORKSPACE} (Gondolin VM, mounted from host: ${localCwd})`,
+            );
+            modified = modified
+                .split(savedHostSkillsDir)
+                .join(GUEST_SKILLS_DIR);
+            return modified;
+        },
+
+        translatePath(hostPath: string) {
+            return hostToGuestPath(localCwd, hostPath);
+        },
+    };
+}

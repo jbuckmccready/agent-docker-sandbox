@@ -9,8 +9,9 @@ Example points of confusion/distraction:
 - You made incorrect assumptions about architecture or conventions and had to backtrack.
 - You over-engineered or under-engineered a solution and needed correction.
 
-For each point of confusion or distraction, use this format for the list:
+For each point of confusion or distraction, use this format:
 
+```md
 ### Issue: <one-line summary>
 
 - **Category:** project docs/config | agent behavior | environment/tooling
@@ -18,3 +19,4 @@ For each point of confusion or distraction, use this format for the list:
 - **What happened:** <brief description>
 - **Impact:** <how it affected the session>
 - **Fix:** <suggestion for how to prevent this in future sessions>
+```

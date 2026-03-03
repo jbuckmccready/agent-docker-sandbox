@@ -81,4 +81,4 @@ Include responsive section navigation. Use a current-vs-planned visual language 
 
 Ultrathink.
 
-$ARGUMENTS
+$@

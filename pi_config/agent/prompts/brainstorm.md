@@ -2,8 +2,9 @@ Help me brainstorm ideas for a concept or goal I have in mind. The goal may be a
 
 Come up with multiple ideas, for each idea provide a high level description for how it would work, the positives and negatives of the approach, and any unknowns that need further analysis or research.
 
-For each idea, use this format for the list:
+For each idea, use this format:
 
+```md
 ### Idea: <one-line summary>
 
 <Description of the idea and how it would work>
@@ -16,7 +17,7 @@ For each idea, use this format for the list:
 
 **Unknowns:**
 <List of any questions or areas that require further research to evaluate this idea>
-
+```
 
 Input for brainstorming:
 $ARGUMENTS
