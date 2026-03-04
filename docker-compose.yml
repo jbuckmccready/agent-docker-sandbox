@@ -19,6 +19,7 @@ services:
     volumes:
       - ~/projects:/projects
       - ~/.pi/agent/skills:/home/agent/.pi/agent/skills:ro
+      - ${TMPDIR:-/tmp}:/tmp/pi-host-tmp:ro
 
       # Persist the user's entire home across runs (caches, rustup, uv/pipx installs, etc.)
       - pi_agent_sandbox_home:/home/agent
