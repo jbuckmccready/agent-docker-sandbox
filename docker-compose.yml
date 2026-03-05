@@ -4,6 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile
     image: pi-docker-sandbox:dev
+    security_opt:
+      # Default seccomp profile with io_uring syscalls allowed
+      - seccomp=./seccomp-allow-io_uring.json
     container_name: pi-docker-sandbox
     # Interactive terminal UI friendly
     tty: true
