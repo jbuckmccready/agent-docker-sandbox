@@ -4,6 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile
     image: agent-sandbox:dev
+    security_opt:
+      # Default seccomp profile with io_uring syscalls allowed
+      - seccomp=./seccomp-allow-io_uring.json
     container_name: agent-sandbox
     # Interactive terminal UI friendly
     tty: true
