@@ -38,5 +38,10 @@ if [[ "$NO_PROXY" == false ]]; then
     COMPOSE_FILES+=(-f docker-compose.override.yml)
 fi
 
+RUN_ARGS=(--rm --build --name "$CONTAINER_NAME")
+if [[ -f .env.docker ]]; then
+    RUN_ARGS+=(--env-from-file .env.docker)
+fi
+
 echo "🚀 Starting agent sandbox (name=$CONTAINER_NAME, proxy=$([[ "$NO_PROXY" == false ]] && echo "on" || echo "off"))..."
-docker compose "${COMPOSE_FILES[@]}" run --rm --build --name "$CONTAINER_NAME" "$@" sandbox
+docker compose "${COMPOSE_FILES[@]}" run "${RUN_ARGS[@]}" "$@" sandbox
