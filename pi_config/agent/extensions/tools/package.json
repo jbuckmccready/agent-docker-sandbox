@@ -16,6 +16,7 @@
 		"@anthropic-ai/sandbox-runtime": "^0.0.26",
 		"@earendil-works/gondolin": "^0.5.0",
 		"diff": "^7.0.0",
+		"glob": "^13.0.6",
 		"strip-ansi": "^7.1.2"
 	},
 	"devDependencies": {
